@@ -1,0 +1,227 @@
+//Contact form data to Hubspot
+add_action( 'wp_ajax_call_hubspot_contact_form', 'call_hubspot_contact_form' );
+add_action( 'wp_ajax_nopriv_call_hubspot_contact_form', 'call_hubspot_contact_form' );
+
+function call_hubspot_contact_form(){
+	
+	$api_key = 'c7c88f6e-e4a7-4d10-9c7e-eb0f10ee5311';
+
+    $firstname =  $_POST['first_name'];
+    $lastname = $_POST['last_name'];
+    $email = $_POST['email_address'];
+    $phone = $_POST['phone'];
+    $company = $_POST['company'];
+    $server_count = $_POST['server_count'];
+    $target_cloud = $_POST['target_cloud'];
+    $date = $_POST['date'];
+	
+	$contact = array(
+        'properties' => array(
+            array(
+                'property' => 'email',
+                'value' => $email
+            ),
+            array(
+                'property' => 'firstname',
+                'value' => $firstname
+            ),
+            array(
+                'property' => 'lastname',
+                'value' => $lastname
+            ),
+            array(
+                'property' => 'phone',
+                'value' => $phone
+            ),
+            array(
+                'property' => 'company',
+                'value' => $company
+            )
+        )
+    );
+	
+	//create a company
+    $company_data = create_company_hubspot($company, $api_key);
+    $company_data = json_decode($company_data);
+    $company_id = $company_data -> companyId;
+    //create a contact
+    $contact_vid = create_contact_hubspot($contact, $api_key);
+    //create a deal
+    $deal_info = array(
+        'associations' => array(
+            'associatedCompanyIds' => array($company_id),
+            'associatedVids' => array($contact_vid)
+        ),
+        'properties' => array(
+            array(
+                'value' => 'Discovery & Analysis Lead',
+                'name' => 'dealname'
+            ),
+            array(
+                'value' => '1783025',
+                'name' => 'dealstage'
+            ),
+            array(
+                'value' => 'default',
+                'name' => 'pipeline'
+            ),
+            array(
+                'value' => '23918103',
+                'name' => 'hubspot_owner_id'
+            ),
+            array(
+                'value' => 1000 * strtotime($date),
+                'name' => 'closedate'
+            ),
+            array(
+                'value' => $server_count,
+                'name' => 'approximate_server_count'
+            ),
+            array(
+                'value' => 'newbusiness',
+                'name' => 'dealtype'
+            ),
+            array(
+                'value' => $target_cloud,
+                'name' => 'target_cloud'
+            )
+        )
+    );
+    $deal = create_deal_hubspot($deal_info, $api_key);
+    print_r($deal);
+
+    //Process a new form submission in HubSpot in order to create a new Contact.
+
+    $hubspotutk      = $_COOKIE['hubspotutk']; //grab the cookie from the visitors browser.
+    $ip_addr         = $_SERVER['REMOTE_ADDR']; //IP address too.
+    $hs_context      = array(
+        'hutk' => $hubspotutk,
+        'ipAddress' => $ip_addr,
+        'pageUrl' => 'http://www.example.com/form-page',
+        'pageName' => 'Example Title'
+    );
+    $hs_context_json = json_encode($hs_context);
+
+    //Need to populate these variable with values from the form.
+    $str_post = "firstname=" . urlencode($firstname) 
+        . "&lastname=" . urlencode($lastname) 
+        . "&email=" . urlencode($email)
+        . "&phone=" . urlencode($phone)
+        . "&company=" . urlencode($company)
+        . "&approximate_server_count=" . urlencode($server_count)
+        . "&target_cloud=" . urlencode($target_cloud)
+        . "&date=" . urlencode($date); //Leave this one be
+
+    //replace the values in this URL with your portal ID and your form GUID
+    $endpoint = 'https://forms.hubspot.com/uploads/form/v2/3273269/ce16142b-8906-4c41-89bb-6ed119c780a8';
+
+    $ch = @curl_init();
+    @curl_setopt($ch, CURLOPT_POST, true);
+    @curl_setopt($ch, CURLOPT_POSTFIELDS, $str_post);
+    @curl_setopt($ch, CURLOPT_URL, $endpoint);
+    @curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+        'Content-Type: application/x-www-form-urlencoded'
+    ));
+    @curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    $response    = @curl_exec($ch); //Log the response from HubSpot as needed.
+    $status_code = @curl_getinfo($ch, CURLINFO_HTTP_CODE); //Log the response status code
+    @curl_close($ch);
+
+    if( $response == '404'){
+        echo 'Form GUID is not found for the provided Hub ID.';
+    }elseif( $response == '502'){
+        echo 'An internal server error occurs.';
+    }else{
+        echo 'The form submission is successful to HubSpot';
+    }
+    
+    wp_die();
+}
+
+//Create a Company to Hubspot
+function create_company_hubspot($company, $api_key){
+
+    $company = $company;
+    $api_key = $api_key;
+    $endpoint = 'https://api.hubapi.com/companies/v2/companies?hapikey=' . $api_key;
+
+    $company_data = array(
+        'properties' => array(
+            array(
+                'name' => 'name',
+                'value' => $company
+            ),
+            array(
+                'name' => 'description',
+                'value' => 'A company description'
+            )
+        ),
+    );
+    $company_data = json_encode($company_data);
+
+    $ch = @curl_init();
+    @curl_setopt($ch, CURLOPT_POST, true);
+    @curl_setopt($ch, CURLOPT_POSTFIELDS, $company_data);
+    @curl_setopt($ch, CURLOPT_URL, $endpoint);
+    @curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+        'Content-Type: application/json',
+    ));
+    @curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    $response    = @curl_exec($ch);
+    $status_code = @curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_errors = curl_error($ch);
+    @curl_close($ch);
+
+    return $response;
+}
+
+//create a cotact to hubspot
+function create_contact_hubspot($contact, $api_key){
+    $contact = $contact;
+    $api_key = $api_key;
+
+    $post_json = json_encode($contact);
+    $endpoint = 'https://api.hubapi.com/contacts/v1/contact?hapikey=' . $api_key;
+    $ch = @curl_init();
+    @curl_setopt($ch, CURLOPT_POST, true);
+    @curl_setopt($ch, CURLOPT_POSTFIELDS, $post_json);
+    @curl_setopt($ch, CURLOPT_URL, $endpoint);
+    @curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
+    @curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    $response = @curl_exec($ch);
+    $status_code = @curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_errors = curl_error($ch);
+    @curl_close($ch);
+
+    if( $status_code == '200' ){
+        $response = json_decode($response);
+        $vid = $response->vid;
+        return $vid;
+    }elseif ( $status_code == '409' ) {
+        $response = json_decode($response);
+        $vid = $response->identityProfile->vid;
+        return $vid;
+    }else{
+        return 'There is an error with contact register';
+    }
+}
+
+//create a deal to hubspot
+function create_deal_hubspot($deal_info, $api_key){
+    $deal_info = json_encode($deal_info); 
+    $api_key = $api_key;
+
+    $endpoint = 'https://api.hubapi.com/deals/v1/deal?hapikey=' . $api_key;
+    $ch = @curl_init();
+    @curl_setopt($ch, CURLOPT_POST, true);
+    @curl_setopt($ch, CURLOPT_POSTFIELDS, $deal_info);
+    @curl_setopt($ch, CURLOPT_URL, $endpoint);
+    @curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
+    @curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    $response = @curl_exec($ch);
+    $status_code = @curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_errors = curl_error($ch);
+    @curl_close($ch);
+
+    return $response;
+}
